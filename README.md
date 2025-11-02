@@ -1,14 +1,14 @@
 # Stock Market Simulator
 
-A high-performance stock market simulator using Monte Carlo Markov Chain methods with C++ core algorithms and Python interface.
+A stock market simulator using Monte Carlo Markov Chain methods with C++ core algorithms and Python interface.
 
 ## Features
 
-- High-performance C++ core with optimized MCMC algorithms
+- C++ core with MCMC algorithms
 - Geometric Brownian Motion with jump diffusion processes
 - Multi-asset portfolio simulation with correlation modeling
 - Risk analysis tools including VaR, CVaR, Sharpe ratio, and Sortino ratio
-- Interactive Streamlit dashboard for real-time visualization
+- Streamlit dashboard for visualization
 - Python API with NumPy and Pandas integration
 
 ## Installation
@@ -170,7 +170,7 @@ stock-market-simulator/
 - Geometric Brownian Motion with jump diffusion
 - Correlated multi-asset simulation
 - Efficient random number generation
-- Optimized C++ implementation
+- C++ implementation
 
 ### Risk Analysis
 - Value at Risk (VaR) and Conditional VaR
@@ -183,7 +183,7 @@ stock-market-simulator/
 - Multi-asset portfolio construction
 - Weight normalization
 - Performance attribution
-- Risk-return optimization
+- Risk-return analysis
 
 ## Configuration
 
@@ -208,17 +208,17 @@ The simulator uses a flexible configuration system. Example configuration:
 
 ## Performance
 
-The C++ core provides significant performance advantages:
+The C++ core provides significant advantages:
 - 10-100x faster than pure Python implementations
 - Efficient memory usage for large simulations
-- Optimized linear algebra operations
+- Linear algebra operations
 - Parallel-friendly design
 
 ## API Reference
 
 ### StockMarketSimulator
 
-Main simulator class providing high-level interface.
+Main simulator class providing interface.
 
 Methods:
 - `simulate_single_asset(params)`: Single asset simulation
