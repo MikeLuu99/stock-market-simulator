@@ -23,7 +23,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("🚀 High-Performance Stock Market Simulator")
+st.title("📈 Stock Market Simulator")
 st.markdown("Monte Carlo Markov Chain (MCMC) based stock market simulation with real-time analysis")
 
 if not SIMULATOR_AVAILABLE:
@@ -237,7 +237,7 @@ def main():
 
                 # Plot paths
                 fig_paths = plot_simulation_paths(paths, "Monte Carlo Price Paths")
-                st.plotly_chart(fig_paths, use_container_width=True)
+                st.plotly_chart(fig_paths, width="container")
 
                 # Calculate and display statistics
                 final_prices = paths[:, -1]
@@ -258,7 +258,7 @@ def main():
 
                 # Returns distribution
                 fig_dist = plot_returns_distribution(returns, "Log Returns Distribution")
-                st.plotly_chart(fig_dist, use_container_width=True)
+                st.plotly_chart(fig_dist, width="container")
 
             elif params['sim_type'] == "Multi-Asset Portfolio":
                 st.subheader("Portfolio Simulation")
@@ -323,7 +323,7 @@ def main():
                     height=400
                 )
 
-                st.plotly_chart(fig_portfolio, use_container_width=True)
+                st.plotly_chart(fig_portfolio, width="container")
 
                 # Portfolio metrics
                 st.subheader("Portfolio Metrics")
@@ -372,7 +372,7 @@ def main():
                             title=f"{symbol} Price History",
                             height=300
                         )
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, width="container")
 
             except Exception as e:
                 st.error(f"Error fetching market data: {e}")
