@@ -1,0 +1,381 @@
+import streamlit as st
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import time
+from typing import Dict, List, Optional
+
+# Import our simulator (will work after compilation)
+try:
+    from python.simulator import StockMarketSimulator
+    from python.utils import DataLoader, ConfigManager
+    SIMULATOR_AVAILABLE = True
+except ImportError:
+    SIMULATOR_AVAILABLE = False
+    st.error("Please compile the C++ module first by running: pip install -e .")
+
+st.set_page_config(
+    page_title="Stock Market Simulator",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.title("🚀 High-Performance Stock Market Simulator")
+st.markdown("Monte Carlo Markov Chain (MCMC) based stock market simulation with real-time analysis")
+
+if not SIMULATOR_AVAILABLE:
+    st.stop()
+
+@st.cache_resource
+def get_simulator():
+    return StockMarketSimulator()
+
+@st.cache_resource
+def get_config_manager():
+    return ConfigManager()
+
+def sidebar_controls():
+    st.sidebar.header("Simulation Parameters")
+
+    sim_type = st.sidebar.selectbox(
+        "Simulation Type",
+        ["Single Asset", "Multi-Asset Portfolio", "Risk Analysis"]
+    )
+
+    st.sidebar.subheader("Market Parameters")
+    initial_price = st.sidebar.number_input("Initial Price", value=100.0, min_value=1.0)
+    drift = st.sidebar.slider("Annual Drift", -0.5, 0.5, 0.05, 0.01)
+    volatility = st.sidebar.slider("Volatility", 0.01, 1.0, 0.2, 0.01)
+
+    st.sidebar.subheader("Jump Process")
+    jump_intensity = st.sidebar.slider("Jump Intensity", 0.0, 1.0, 0.1, 0.01)
+    jump_mean = st.sidebar.slider("Jump Mean", -0.1, 0.1, 0.0, 0.01)
+    jump_std = st.sidebar.slider("Jump Std", 0.01, 0.2, 0.05, 0.01)
+
+    st.sidebar.subheader("Simulation Settings")
+    num_simulations = st.sidebar.selectbox("Number of Simulations", [100, 500, 1000, 5000], index=2)
+    num_steps = st.sidebar.selectbox("Time Steps", [63, 126, 252, 504], index=2)
+
+    return {
+        'sim_type': sim_type,
+        'initial_price': initial_price,
+        'drift': drift,
+        'volatility': volatility,
+        'jump_intensity': jump_intensity,
+        'jump_mean': jump_mean,
+        'jump_std': jump_std,
+        'num_simulations': num_simulations,
+        'num_steps': num_steps
+    }
+
+def plot_simulation_paths(paths: np.ndarray, title: str = "Simulated Price Paths", num_paths_to_show: int = 50):
+    fig = go.Figure()
+
+    time_axis = np.arange(paths.shape[1])
+
+    # Show subset of paths
+    paths_to_show = min(num_paths_to_show, paths.shape[0])
+    indices = np.random.choice(paths.shape[0], paths_to_show, replace=False)
+
+    for i in indices[:10]:  # Show first 10 for clarity
+        fig.add_trace(go.Scatter(
+            x=time_axis,
+            y=paths[i],
+            mode='lines',
+            opacity=0.3,
+            line=dict(width=1),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+
+    # Add mean path
+    mean_path = np.mean(paths, axis=0)
+    fig.add_trace(go.Scatter(
+        x=time_axis,
+        y=mean_path,
+        mode='lines',
+        line=dict(color='red', width=3),
+        name='Mean Path'
+    ))
+
+    # Add confidence intervals
+    percentile_95 = np.percentile(paths, 95, axis=0)
+    percentile_5 = np.percentile(paths, 5, axis=0)
+
+    fig.add_trace(go.Scatter(
+        x=time_axis,
+        y=percentile_95,
+        mode='lines',
+        line=dict(color='rgba(255,0,0,0)', width=0),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=time_axis,
+        y=percentile_5,
+        fill='tonexty',
+        mode='lines',
+        line=dict(color='rgba(255,0,0,0)', width=0),
+        name='90% Confidence Interval',
+        fillcolor='rgba(255,0,0,0.1)'
+    ))
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Time Steps",
+        yaxis_title="Price",
+        height=500,
+        showlegend=True
+    )
+
+    return fig
+
+def plot_returns_distribution(returns: np.ndarray, title: str = "Returns Distribution"):
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=('Returns Distribution', 'Q-Q Plot vs Normal'),
+        specs=[[{"secondary_y": False}, {"secondary_y": False}]]
+    )
+
+    # Histogram
+    fig.add_trace(
+        go.Histogram(
+            x=returns,
+            nbinsx=50,
+            opacity=0.7,
+            name='Returns'
+        ),
+        row=1, col=1
+    )
+
+    # Q-Q plot
+    from scipy import stats
+    qq_result = stats.probplot(returns, dist="norm")
+
+    fig.add_trace(
+        go.Scatter(
+            x=qq_result[0][0],
+            y=qq_result[0][1],
+            mode='markers',
+            name='Sample Quantiles',
+            marker=dict(size=4)
+        ),
+        row=1, col=2
+    )
+
+    # Add reference line for Q-Q plot
+    line_x = np.array([qq_result[0][0].min(), qq_result[0][0].max()])
+    line_y = qq_result[1][1] + qq_result[1][0] * line_x
+
+    fig.add_trace(
+        go.Scatter(
+            x=line_x,
+            y=line_y,
+            mode='lines',
+            name='Normal Reference',
+            line=dict(color='red', dash='dash')
+        ),
+        row=1, col=2
+    )
+
+    fig.update_layout(
+        title=title,
+        height=400,
+        showlegend=True
+    )
+
+    return fig
+
+def display_risk_metrics(metrics: Dict[str, float]):
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("VaR (95%)", f"{metrics.get('var_95', 0):.4f}")
+        st.metric("VaR (99%)", f"{metrics.get('var_99', 0):.4f}")
+
+    with col2:
+        st.metric("CVaR (95%)", f"{metrics.get('cvar_95', 0):.4f}")
+        st.metric("CVaR (99%)", f"{metrics.get('cvar_99', 0):.4f}")
+
+    with col3:
+        st.metric("Sortino Ratio", f"{metrics.get('sortino_ratio', 0):.4f}")
+
+    with col4:
+        if 'sharpe_ratio' in metrics:
+            st.metric("Sharpe Ratio", f"{metrics['sharpe_ratio']:.4f}")
+
+def main():
+    simulator = get_simulator()
+    config_manager = get_config_manager()
+
+    params = sidebar_controls()
+
+    if st.sidebar.button("Run Simulation", type="primary"):
+        with st.spinner("Running Monte Carlo simulation..."):
+            start_time = time.time()
+
+            if params['sim_type'] == "Single Asset":
+                # Single asset simulation
+                sim_params = simulator.create_simulation_params(
+                    initial_price=params['initial_price'],
+                    drift=params['drift'],
+                    volatility=params['volatility'],
+                    jump_intensity=params['jump_intensity'],
+                    jump_mean=params['jump_mean'],
+                    jump_std=params['jump_std'],
+                    num_steps=params['num_steps'],
+                    num_simulations=params['num_simulations']
+                )
+
+                paths = simulator.simulate_single_asset(sim_params)
+
+                st.subheader("Simulation Results")
+
+                # Plot paths
+                fig_paths = plot_simulation_paths(paths, "Monte Carlo Price Paths")
+                st.plotly_chart(fig_paths, use_container_width=True)
+
+                # Calculate and display statistics
+                final_prices = paths[:, -1]
+                returns = np.diff(np.log(paths), axis=1).flatten()
+
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Mean Final Price", f"${np.mean(final_prices):.2f}")
+                with col2:
+                    st.metric("Std Final Price", f"${np.std(final_prices):.2f}")
+                with col3:
+                    st.metric("Simulation Time", f"{time.time() - start_time:.2f}s")
+
+                # Risk metrics
+                st.subheader("Risk Analysis")
+                risk_metrics = simulator.calculate_risk_metrics(returns)
+                display_risk_metrics(risk_metrics)
+
+                # Returns distribution
+                fig_dist = plot_returns_distribution(returns, "Log Returns Distribution")
+                st.plotly_chart(fig_dist, use_container_width=True)
+
+            elif params['sim_type'] == "Multi-Asset Portfolio":
+                st.subheader("Portfolio Simulation")
+
+                # Portfolio setup
+                st.write("Configure your portfolio assets:")
+
+                if 'portfolio_assets' not in st.session_state:
+                    st.session_state.portfolio_assets = [
+                        {'symbol': 'AAPL', 'weight': 0.4, 'params': {}},
+                        {'symbol': 'GOOGL', 'weight': 0.3, 'params': {}},
+                        {'symbol': 'MSFT', 'weight': 0.3, 'params': {}}
+                    ]
+
+                # Simple portfolio display for demo
+                for i, asset in enumerate(st.session_state.portfolio_assets):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        asset['symbol'] = st.text_input(f"Asset {i+1} Symbol", value=asset['symbol'], key=f"symbol_{i}")
+                    with col2:
+                        asset['weight'] = st.number_input(f"Weight", value=asset['weight'], min_value=0.0, max_value=1.0, key=f"weight_{i}")
+
+                    # Use main parameters for all assets
+                    asset['params'] = {
+                        'initial_price': params['initial_price'],
+                        'drift': params['drift'],
+                        'volatility': params['volatility'],
+                        'jump_intensity': params['jump_intensity'],
+                        'jump_mean': params['jump_mean'],
+                        'jump_std': params['jump_std'],
+                        'num_steps': params['num_steps'],
+                        'num_simulations': params['num_simulations']
+                    }
+
+                # Correlation matrix
+                num_assets = len(st.session_state.portfolio_assets)
+                correlation = st.slider("Asset Correlation", -1.0, 1.0, 0.3, 0.1)
+                correlation_matrix = np.full((num_assets, num_assets), correlation)
+                np.fill_diagonal(correlation_matrix, 1.0)
+
+                # Run portfolio simulation
+                paths, portfolio = simulator.simulate_portfolio(
+                    st.session_state.portfolio_assets,
+                    correlation_matrix
+                )
+
+                # Display results
+                portfolio_values = portfolio.calculate_portfolio_values()
+
+                fig_portfolio = go.Figure()
+                fig_portfolio.add_trace(go.Scatter(
+                    x=list(range(len(portfolio_values))),
+                    y=portfolio_values,
+                    mode='lines',
+                    name='Portfolio Value'
+                ))
+
+                fig_portfolio.update_layout(
+                    title="Portfolio Value Over Time",
+                    xaxis_title="Time Steps",
+                    yaxis_title="Portfolio Value",
+                    height=400
+                )
+
+                st.plotly_chart(fig_portfolio, use_container_width=True)
+
+                # Portfolio metrics
+                st.subheader("Portfolio Metrics")
+                col1, col2, col3, col4 = st.columns(4)
+
+                with col1:
+                    st.metric("Sharpe Ratio", f"{portfolio.calculate_sharpe_ratio():.4f}")
+                with col2:
+                    st.metric("Volatility", f"{portfolio.calculate_volatility():.4f}")
+                with col3:
+                    st.metric("Max Drawdown", f"{portfolio.calculate_max_drawdown():.4f}")
+                with col4:
+                    st.metric("Final Value", f"{portfolio_values[-1]:.4f}")
+
+    # Real-time data section
+    st.sidebar.subheader("Real Market Data")
+    if st.sidebar.button("Fetch Market Data"):
+        with st.spinner("Fetching market data..."):
+            try:
+                data_loader = DataLoader()
+                symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA']
+                market_data = data_loader.prepare_simulation_data(symbols, period="6mo")
+
+                st.subheader("Market Data Analysis")
+
+                for symbol, data in market_data.items():
+                    with st.expander(f"{symbol} Analysis"):
+                        col1, col2, col3 = st.columns(3)
+
+                        with col1:
+                            st.metric("Current Price", f"${data['current_price']:.2f}")
+                        with col2:
+                            st.metric("Mean Return", f"{data['mean_return']:.4f}")
+                        with col3:
+                            st.metric("Volatility", f"{data['volatility']:.4f}")
+
+                        # Price chart
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=list(range(len(data['prices']))),
+                            y=data['prices'],
+                            mode='lines',
+                            name=f'{symbol} Price'
+                        ))
+                        fig.update_layout(
+                            title=f"{symbol} Price History",
+                            height=300
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+            except Exception as e:
+                st.error(f"Error fetching market data: {e}")
+
+if __name__ == "__main__":
+    main()
