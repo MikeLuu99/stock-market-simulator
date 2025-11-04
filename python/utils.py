@@ -3,7 +3,11 @@ import numpy as np
 import yfinance as yf
 from typing import List, Dict, Optional, Union
 import json
+import logging
+import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class DataLoader:
@@ -16,12 +20,22 @@ class DataLoader:
         if isinstance(symbols, str):
             symbols = [symbols]
 
+        logger.info(f"[DataLoader] Fetching Yahoo Finance data for {len(symbols)} symbols: {symbols}")
+        logger.info(f"[DataLoader] Parameters: period={period}, interval={interval}")
+
+        start_time = time.time()
         data = yf.download(symbols, period=period, interval=interval)
+        elapsed = time.time() - start_time
+
+        logger.info(f"[DataLoader] Yahoo Finance download completed in {elapsed:.4f}s")
+        logger.info(f"[DataLoader] Downloaded data shape: {data.shape}")
 
         if len(symbols) == 1:
             data.columns = [f"{symbols[0]}_{col}" for col in data.columns]
         else:
             data.columns = [f"{col[1]}_{col[0]}" for col in data.columns]
+
+        logger.info(f"[DataLoader] Data columns after formatting: {list(data.columns)}")
 
         return data
 
@@ -46,16 +60,28 @@ class DataLoader:
         symbols: List[str],
         period: str = "1y"
     ) -> Dict[str, Dict]:
+        logger.info(f"[DataLoader] prepare_simulation_data called for {len(symbols)} symbols")
+
+        start_time = time.time()
         data = DataLoader.fetch_yahoo_data(symbols, period=period)
+        fetch_elapsed = time.time() - start_time
+        logger.info(f"[DataLoader] Data fetching took {fetch_elapsed:.4f}s")
 
         simulation_data = {}
 
+        logger.info(f"[DataLoader] Processing data for each symbol...")
         for symbol in symbols:
             try:
+                logger.info(f"[DataLoader] Processing symbol: {symbol}")
                 close_col = f"{symbol}_Close"
+
                 if close_col in data.columns:
+                    process_start = time.time()
                     prices = data[close_col].dropna()
+                    logger.info(f"[DataLoader] {symbol}: Found {len(prices)} price points")
+
                     log_returns = DataLoader.calculate_log_returns(prices)
+                    logger.info(f"[DataLoader] {symbol}: Calculated {len(log_returns)} log returns")
 
                     simulation_data[symbol] = {
                         'prices': prices.values,
@@ -65,8 +91,19 @@ class DataLoader:
                         'volatility': log_returns.std(),
                         'dates': prices.index.tolist()
                     }
+
+                    process_elapsed = time.time() - process_start
+                    logger.info(f"[DataLoader] {symbol}: Processed in {process_elapsed:.4f}s "
+                              f"(mean_return={log_returns.mean():.6f}, vol={log_returns.std():.6f})")
+                else:
+                    logger.warning(f"[DataLoader] {symbol}: Close column '{close_col}' not found in data")
+
             except Exception as e:
-                print(f"Error processing {symbol}: {e}")
+                logger.error(f"[DataLoader] Error processing {symbol}: {e}", exc_info=True)
+
+        total_elapsed = time.time() - start_time
+        logger.info(f"[DataLoader] prepare_simulation_data completed in {total_elapsed:.4f}s")
+        logger.info(f"[DataLoader] Successfully processed {len(simulation_data)} out of {len(symbols)} symbols")
 
         return simulation_data
 
