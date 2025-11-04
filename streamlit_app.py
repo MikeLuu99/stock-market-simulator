@@ -285,6 +285,63 @@ def main():
 
     params = sidebar_controls()
 
+    # Portfolio configuration (shown BEFORE "Run Simulation" button)
+    if params["sim_type"] == "Multi-Asset Portfolio":
+        st.subheader("Portfolio Configuration")
+        st.write("Configure your portfolio assets:")
+
+        # Initialize portfolio assets in session state
+        if "portfolio_assets" not in st.session_state:
+            st.session_state.portfolio_assets = [
+                {"symbol": "AAPL", "weight": 0.4, "params": {}},
+                {"symbol": "GOOGL", "weight": 0.3, "params": {}},
+                {"symbol": "MSFT", "weight": 0.3, "params": {}},
+            ]
+
+        # Portfolio asset configuration
+        for i, asset in enumerate(st.session_state.portfolio_assets):
+            col1, col2 = st.columns(2)
+            with col1:
+                asset["symbol"] = st.text_input(
+                    f"Asset {i + 1} Symbol",
+                    value=asset["symbol"],
+                    key=f"symbol_{i}",
+                )
+            with col2:
+                asset["weight"] = st.number_input(
+                    f"Weight",
+                    value=asset["weight"],
+                    min_value=0.0,
+                    max_value=1.0,
+                    key=f"weight_{i}",
+                )
+
+            # Use main parameters for all assets
+            asset["params"] = {
+                "initial_price": params["initial_price"],
+                "drift": params["drift"],
+                "volatility": params["volatility"],
+                "jump_intensity": params["jump_intensity"],
+                "jump_mean": params["jump_mean"],
+                "jump_std": params["jump_std"],
+                "num_steps": params["num_steps"],
+                "num_simulations": params["num_simulations"],
+            }
+
+        # Correlation matrix configuration
+        num_assets = len(st.session_state.portfolio_assets)
+        correlation = st.slider("Asset Correlation", -1.0, 1.0, 0.3, 0.1)
+        st.session_state.correlation = correlation
+
+        # Show total weight
+        total_weight = sum(asset["weight"] for asset in st.session_state.portfolio_assets)
+        if abs(total_weight - 1.0) > 0.01:
+            st.warning(f"⚠️ Total weight is {total_weight:.2f}, should be 1.0")
+        else:
+            st.success(f"✓ Total weight: {total_weight:.2f}")
+
+        st.divider()
+
     if st.sidebar.button("Run Simulation", type="primary"):
         logger.info("=== Run Simulation Button Clicked ===")
 
@@ -428,51 +485,11 @@ def main():
                 logger.info("=== About to exit spinner context ===")
 
             elif params["sim_type"] == "Multi-Asset Portfolio":
-                st.subheader("Portfolio Simulation")
+                st.subheader("Portfolio Simulation Results")
 
-                # Portfolio setup
-                st.write("Configure your portfolio assets:")
-
-                if "portfolio_assets" not in st.session_state:
-                    st.session_state.portfolio_assets = [
-                        {"symbol": "AAPL", "weight": 0.4, "params": {}},
-                        {"symbol": "GOOGL", "weight": 0.3, "params": {}},
-                        {"symbol": "MSFT", "weight": 0.3, "params": {}},
-                    ]
-
-                # Simple portfolio display for demo
-                for i, asset in enumerate(st.session_state.portfolio_assets):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        asset["symbol"] = st.text_input(
-                            f"Asset {i + 1} Symbol",
-                            value=asset["symbol"],
-                            key=f"symbol_{i}",
-                        )
-                    with col2:
-                        asset["weight"] = st.number_input(
-                            f"Weight",
-                            value=asset["weight"],
-                            min_value=0.0,
-                            max_value=1.0,
-                            key=f"weight_{i}",
-                        )
-
-                    # Use main parameters for all assets
-                    asset["params"] = {
-                        "initial_price": params["initial_price"],
-                        "drift": params["drift"],
-                        "volatility": params["volatility"],
-                        "jump_intensity": params["jump_intensity"],
-                        "jump_mean": params["jump_mean"],
-                        "jump_std": params["jump_std"],
-                        "num_steps": params["num_steps"],
-                        "num_simulations": params["num_simulations"],
-                    }
-
-                # Correlation matrix
+                # Use portfolio configuration from session state
                 num_assets = len(st.session_state.portfolio_assets)
-                correlation = st.slider("Asset Correlation", -1.0, 1.0, 0.3, 0.1)
+                correlation = st.session_state.correlation
                 correlation_matrix = np.full((num_assets, num_assets), correlation)
                 np.fill_diagonal(correlation_matrix, 1.0)
 
